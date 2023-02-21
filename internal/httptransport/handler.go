@@ -7,12 +7,6 @@ import (
 	"net/http"
 
 	"github.com/gorilla/mux"
-
-	opentracing "github.com/opentracing/opentracing-go"
-	"github.com/opentracing/opentracing-go/ext"
-
-	jaeger "github.com/uber/jaeger-client-go"
-	config "github.com/uber/jaeger-client-go/config"
 )
 
 var templates *template.Template
@@ -61,32 +55,6 @@ func loginGetHandler(storage users.Storage) http.HandlerFunc {
 	}
 }
 
-tracer := opentracing.GlobalTracer()
-
-	cfg := &config / Configuration{
-		serviceName: "client",
-		sampler: &config.SamplerConfig{
-			Type:  "const",
-			Param: 1,
-		},
-		Reporter: &config.ReporterConfig{
-			LogSpan: true,
-		},
-	}
-
-	jLogger := jaegerlog.StdLogger
-	jMatricsFactory := matrics.NullFactory
-
-	tracer, closer, err := cfg.NewTracer(
-		jaeger.Logger(jLogger),
-		jaeger.NewNullMetrics(jMatricsFactory),
-	)
-	
-	if err!=nil{
-		panic(fmt.Sprintf("Can't init jaeger : %v\n", err))
-	}
-
-
 func loginPostHandler(storage users.Storage) http.HandlerFunc {
 
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -96,17 +64,13 @@ func loginPostHandler(storage users.Storage) http.HandlerFunc {
 		password := r.PostForm.Get("password")
 
 		err := storage.Check(r.Context(), name, password)
+
 		if err != nil {
 			log.Printf("id or pass may be incorrect : %v", err)
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
 
-		spanCtx, _  := tracer.Extract(opentracing.HTTPHeaders, opentracing.HTTPHeadersCarrier(r.Header))
-		serverspan := tracer.StartSpan("server", ext.RPCServerOption(spanCtx))
-		time.Sleep(time.Second)
-		defer serverspan.Finish()
-		
 		http.Redirect(w, r, "/", 302)
 
 	}
