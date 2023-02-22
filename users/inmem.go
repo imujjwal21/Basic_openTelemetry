@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"log"
 
 	_ "github.com/go-sql-driver/mysql"
 	"go.opentelemetry.io/otel"
@@ -19,10 +18,42 @@ func NewInMemory(db *sql.DB) Storage {
 	return &inMemory{db}
 }
 
-func (i *inMemory) Create(ctx context.Context, name, password string) error {
+const name = "login"
 
-	log.Print("Register -> ", name, " : ", password)
-	log.Print("\nDatabase -> ", i.db)
+type Telemet interface {
+	Done(ctx context.Context) error
+}
+
+type checkedLogin struct {
+}
+
+func (l *checkedLogin) Done(ctx context.Context) error {
+	_, span := otel.Tracer(name).Start(ctx, "checkedLogin")
+	defer span.End()
+	return nil
+}
+
+type checkedQuery struct {
+	first Telemet
+}
+
+func (c *checkedQuery) Done(ctx context.Context) error {
+	_, span := otel.Tracer(name).Start(ctx, "checkedQuery")
+	defer span.End()
+	return c.first.Done(ctx)
+}
+
+type insideCheckFun struct {
+	second Telemet
+}
+
+func (i *insideCheckFun) Done(ctx context.Context) error {
+	_, span := otel.Tracer(name).Start(ctx, "insideCheckFun")
+	defer span.End()
+	return i.second.Done(ctx)
+}
+
+func (i *inMemory) Create(ctx context.Context, name, password string) error {
 
 	_, err := i.db.Exec(`INSERT INTO users (name, password) VALUES (?,?)`, name, password)
 	if err != nil {
@@ -34,16 +65,18 @@ func (i *inMemory) Create(ctx context.Context, name, password string) error {
 
 func (i *inMemory) Check(ctx context.Context, name, password string) error {
 
-	_, span := otel.Tracer(name).Start(ctx, "Check")
-	defer span.End()
+	var temp Telemet
+	{
+		temp = &checkedLogin{}
+	}
 
 	row, err := i.db.Query(`SELECT id FROM users WHERE name=? and password=?`, name, password)
-
-	log.Print("Login ->  ", name, " : ", password)
 
 	if err != nil {
 		return fmt.Errorf("can't retrieved data from database : %v", err)
 	}
+
+	temp = &checkedQuery{temp}
 
 	var flag bool
 
@@ -54,6 +87,10 @@ func (i *inMemory) Check(ctx context.Context, name, password string) error {
 	if !flag {
 		return errors.New("can't connect to database with id")
 	}
+
+	temp = &insideCheckFun{temp}
+
+	temp.Done(ctx)
 
 	return nil
 }
