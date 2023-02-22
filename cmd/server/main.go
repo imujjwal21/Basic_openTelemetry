@@ -23,7 +23,7 @@ import (
 )
 
 func newExporter() (*jaeger.Exporter, error) {
-	exp, err := jaeger.New(jaeger.WithCollectorEndpoint(jaeger.WithEndpoint("http://localhost:16686/search")))
+	exp, err := jaeger.New(jaeger.WithCollectorEndpoint(jaeger.WithEndpoint("http://localhost:16686")))
 
 	return exp, err
 }
@@ -60,11 +60,13 @@ func main() {
 		tracesdk.WithBatcher(exp),
 		tracesdk.WithResource(newResource()),
 	)
+
 	defer func() {
 		if err := tp.Shutdown(context.Background()); err != nil {
 			l.Fatal(err)
 		}
 	}()
+
 	otel.SetTracerProvider(tp)
 
 	go func() {
